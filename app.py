@@ -11,9 +11,19 @@ import asyncio
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes
 import nest_asyncio
+import sys
+import traceback
 
 # Для работы asyncio в потоке
 nest_asyncio.apply()
+
+# ========== ОТЛАДКА: сразу пишем в логи ==========
+print("="*50)
+print("🚀🚀🚀 ПРИЛОЖЕНИЕ ЗАПУСКАЕТСЯ 🚀🚀🚀")
+print(f"Python версия: {sys.version}")
+print("="*50)
+sys.stdout.flush()  # Принудительно отправляем в логи
+# =================================================
 
 app = Flask(__name__)
 CORS(app)
@@ -34,6 +44,13 @@ SHEET_EMPLOYEES = 'Сотрудники'
 # Telegram
 TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 CHAT_ID_WORK = '-1003893391515'
+
+print(f"📌 TELEGRAM_BOT_TOKEN {'ЗАДАН' if TELEGRAM_BOT_TOKEN else 'НЕ ЗАДАН!'}")
+if TELEGRAM_BOT_TOKEN:
+    print(f"   Токен (первые 10 символов): {TELEGRAM_BOT_TOKEN[:10]}...")
+print(f"📌 CHAT_ID_WORK: {CHAT_ID_WORK}")
+print("="*50)
+sys.stdout.flush()
 # ===============================================
 
 def get_sheets_client():
@@ -45,9 +62,11 @@ def get_sheets_client():
         creds_json = os.environ.get('GOOGLE_CREDENTIALS')
         creds_dict = json.loads(creds_json)
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        print("✅ Google Sheets: авторизация через переменную окружения")
     else:
         # Локально - из файла
         creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        print("📌 Google Sheets: авторизация через локальный файл")
     
     client = gspread.authorize(creds)
     return client
@@ -56,6 +75,8 @@ def get_sheets_client():
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
+    user = update.effective_user
+    print(f"📨 Команда /start от пользователя {user.id} ({user.first_name})")
     await update.message.reply_text(
         "👋 Привет! Я бот для приёмки материалов.\n\n"
         "Команды:\n"
@@ -66,6 +87,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /help"""
+    user = update.effective_user
+    print(f"📨 Команда /help от пользователя {user.id}")
     await update.message.reply_text(
         "📋 **Справка по командам**\n\n"
         "/start - Начать работу с ботом\n"
@@ -76,6 +99,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /receiving - открывает Mini App"""
+    user = update.effective_user
+    print(f"📨 Команда /receiving от пользователя {user.id}")
     await update.message.reply_text(
         "📱 Откройте приложение для приёмки материалов:",
         reply_markup={
@@ -88,40 +113,69 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def run_bot():
     """Запуск Telegram бота"""
+    print("🔥 run_bot() вызвана!")
+    sys.stdout.flush()
+    
     token = TELEGRAM_BOT_TOKEN
+    print(f"🔑 Токен: {'НАЙДЕН' if token else 'НЕ НАЙДЕН!'}")
+    if token:
+        print(f"   Длина токена: {len(token)} символов")
+        print(f"   Первые 10 символов: {token[:10]}...")
+    sys.stdout.flush()
+    
     if not token:
         print("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения")
+        sys.stdout.flush()
         return
     
     try:
-        # Создаем приложение бота
+        print("🔄 Создаем приложение бота...")
+        sys.stdout.flush()
         application = Application.builder().token(token).build()
         
-        # Добавляем обработчики команд
+        print("➕ Добавляем обработчики команд...")
+        sys.stdout.flush()
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("receiving", receiving_command))
         
-        print("✅ Telegram бот запущен и слушает команды...")
+        print("✅ Обработчики добавлены")
+        sys.stdout.flush()
         
-        # Запускаем бота
+        print("🔄 Инициализация бота...")
+        sys.stdout.flush()
         await application.initialize()
+        
+        print("▶️ Запуск бота...")
+        sys.stdout.flush()
         await application.start()
         
-        # Запускаем polling (это блокирующая операция)
+        print("📡 Запуск polling (прослушивание команд)...")
+        sys.stdout.flush()
         await application.updater.start_polling()
+        
+        print("✅✅✅ Telegram бот УСПЕШНО запущен и слушает команды! ✅✅✅")
+        print("🤖 Бот готов к работе! Отправьте /start в Telegram")
+        sys.stdout.flush()
         
         # Держим бота запущенным
         while True:
             await asyncio.sleep(1)
             
     except Exception as e:
-        print(f"❌ Ошибка запуска бота: {e}")
+        print(f"❌❌❌ ОШИБКА запуска бота: {e}")
+        print("📋 Детали ошибки:")
+        traceback.print_exc()
+        sys.stdout.flush()
 
 def start_bot_thread():
     """Запуск бота в отдельном потоке"""
+    print("🔄 Создаем новый event loop для бота...")
+    sys.stdout.flush()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    print("✅ Event loop создан, запускаем run_bot()")
+    sys.stdout.flush()
     loop.run_until_complete(run_bot())
 
 # ================== API ЭНДПОИНТЫ ==================
@@ -129,6 +183,7 @@ def start_bot_thread():
 @app.route('/api/objects', methods=['GET'])
 def get_objects():
     """Получить список объектов"""
+    print("📡 GET /api/objects")
     try:
         client = get_sheets_client()
         sheet = client.open_by_key(SPREADSHEET_ID_COMPANY).worksheet(SHEET_OBJECTS)
@@ -142,14 +197,18 @@ def get_objects():
                     'name': row[1].strip() if len(row) > 1 else ''
                 })
         
+        print(f"✅ Найдено объектов: {len(objects)}")
         return jsonify({'success': True, 'objects': objects})
     except Exception as e:
+        print(f"❌ Ошибка в /api/objects: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/zayavki', methods=['GET'])
 def get_zayavki():
     """Получить активные заявки для объекта"""
     object_code = request.args.get('object')
+    print(f"📡 GET /api/zayavki?object={object_code}")
+    
     if not object_code:
         return jsonify({'success': False, 'error': 'Не указан объект'}), 400
     
@@ -172,13 +231,16 @@ def get_zayavki():
                         'status': status
                     })
         
+        print(f"✅ Найдено заявок: {len(zayavki)}")
         return jsonify({'success': True, 'zayavki': zayavki})
     except Exception as e:
+        print(f"❌ Ошибка в /api/zayavki: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/zayavka/<nomer>', methods=['GET'])
 def get_zayavka_details(nomer):
     """Получить позиции заявки"""
+    print(f"📡 GET /api/zayavka/{nomer}")
     try:
         client = get_sheets_client()
         sheet = client.open_by_key(SPREADSHEET_ID_MAIN).worksheet(SHEET_PERECHEN_MATERIALOV)
@@ -201,14 +263,17 @@ def get_zayavka_details(nomer):
                     'kommentariy': row[10] if len(row) > 10 else ''
                 })
         
+        print(f"✅ Найдено позиций: {len(pozicii)}")
         return jsonify({'success': True, 'pozicii': pozicii})
     except Exception as e:
+        print(f"❌ Ошибка в /api/zayavka/{nomer}: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/priemka', methods=['POST'])
 def priemka():
     """Принять материал"""
     data = request.json
+    print(f"📡 POST /api/priemka: {data.get('nomer_zayavki')} - {data.get('naim_materiala')}")
     
     required = ['nomer_zayavki', 'naim_materiala', 'kolvo_fakt', 'kachestvo', 'fio']
     for field in required:
@@ -236,12 +301,13 @@ def priemka():
                 komment = f"Принял: {data['fio']}. {data.get('kommentariy', '')}"
                 sheet.update(f'K{row_num}', komment)
                 updated = True
+                print(f"✅ Позиция обновлена (строка {row_num})")
                 break
         
         if updated:
             # Если брак - уведомление
             if data['kachestvo'] == 'Брак':
-                # Отправляем в Telegram
+                print("⚠️ Обнаружен брак, отправляем уведомление")
                 message = f"""
 ⚠️ **БРАК НА ОБЪЕКТЕ**
 
@@ -252,33 +318,54 @@ def priemka():
 """
                 url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                 try:
-                    requests.post(url, json={
+                    response = requests.post(url, json={
                         'chat_id': CHAT_ID_WORK,
                         'text': message,
                         'parse_mode': 'Markdown'
                     })
+                    if response.status_code == 200:
+                        print("✅ Уведомление о браке отправлено")
+                    else:
+                        print(f"❌ Ошибка отправки уведомления: {response.status_code}")
                 except Exception as e:
-                    print(f"Ошибка отправки уведомления: {e}")
+                    print(f"❌ Ошибка отправки уведомления: {e}")
             
             return jsonify({'success': True, 'message': 'Приемка сохранена'})
         else:
+            print(f"❌ Позиция не найдена: {data['nomer_zayavki']} - {data['naim_materiala']}")
             return jsonify({'success': False, 'error': 'Позиция не найдена'}), 404
             
     except Exception as e:
+        print(f"❌ Ошибка в /api/priemka: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health():
+    print("📡 GET /api/health")
     return jsonify({'status': 'ok', 'time': datetime.now().isoformat()})
 
 # ================== ЗАПУСК ==================
 
 if __name__ == '__main__':
+    print("="*50)
+    print("🟢 ЗАПУСК MAIN БЛОКА")
+    print("="*50)
+    sys.stdout.flush()
+    
     # Запускаем Telegram бота в отдельном потоке
+    print("🚀 Создаем поток для Telegram бота...")
+    sys.stdout.flush()
     bot_thread = threading.Thread(target=start_bot_thread, daemon=True)
     bot_thread.start()
-    print("🚀 Бот запущен в отдельном потоке")
+    print("✅ Поток для бота запущен")
+    sys.stdout.flush()
+    
+    # Даем боту секунду на инициализацию
+    import time
+    time.sleep(1)
     
     # Запускаем Flask сервер
     port = int(os.environ.get('PORT', 10000))
+    print(f"🚀 Запуск Flask сервера на порту {port}...")
+    sys.stdout.flush()
     app.run(host='0.0.0.0', port=port, debug=False)
