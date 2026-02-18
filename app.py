@@ -6,6 +6,14 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 from datetime import datetime
+import threading
+import asyncio
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, ContextTypes
+import nest_asyncio
+
+# Для работы asyncio в потоке
+nest_asyncio.apply()
 
 app = Flask(__name__)
 CORS(app)
@@ -24,7 +32,7 @@ SHEET_OBJECTS = 'Действующие объекты'
 SHEET_EMPLOYEES = 'Сотрудники'
 
 # Telegram
-TELEGRAM_BOT_TOKEN = '8374125366:AAEQKeJoedFE6feFLUOX8Xu_mQuuKu6M9oM'
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
 CHAT_ID_WORK = '-1003893391515'
 # ===============================================
 
@@ -43,6 +51,80 @@ def get_sheets_client():
     
     client = gspread.authorize(creds)
     return client
+
+# ================== КОМАНДЫ ДЛЯ TELEGRAM БОТА ==================
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /start"""
+    await update.message.reply_text(
+        "👋 Привет! Я бот для приёмки материалов.\n\n"
+        "Команды:\n"
+        "/start - Приветствие\n"
+        "/receiving - Открыть приёмку материалов\n"
+        "/help - Справка"
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /help"""
+    await update.message.reply_text(
+        "📋 **Справка по командам**\n\n"
+        "/start - Начать работу с ботом\n"
+        "/receiving - Открыть приложение для приёмки материалов\n"
+        "/help - Показать эту справку\n\n"
+        "Для приёмки материалов используйте кнопку меню или команду /receiving"
+    )
+
+async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /receiving - открывает Mini App"""
+    await update.message.reply_text(
+        "📱 Откройте приложение для приёмки материалов:",
+        reply_markup={
+            "inline_keyboard": [[{
+                "text": "🚀 Открыть приёмку",
+                "web_app": {"url": "https://melhipo.github.io/mini-app/"}
+            }]]
+        }
+    )
+
+async def run_bot():
+    """Запуск Telegram бота"""
+    token = TELEGRAM_BOT_TOKEN
+    if not token:
+        print("❌ TELEGRAM_BOT_TOKEN не найден в переменных окружения")
+        return
+    
+    try:
+        # Создаем приложение бота
+        application = Application.builder().token(token).build()
+        
+        # Добавляем обработчики команд
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("receiving", receiving_command))
+        
+        print("✅ Telegram бот запущен и слушает команды...")
+        
+        # Запускаем бота
+        await application.initialize()
+        await application.start()
+        
+        # Запускаем polling (это блокирующая операция)
+        await application.updater.start_polling()
+        
+        # Держим бота запущенным
+        while True:
+            await asyncio.sleep(1)
+            
+    except Exception as e:
+        print(f"❌ Ошибка запуска бота: {e}")
+
+def start_bot_thread():
+    """Запуск бота в отдельном потоке"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_bot())
+
+# ================== API ЭНДПОИНТЫ ==================
 
 @app.route('/api/objects', methods=['GET'])
 def get_objects():
@@ -112,7 +194,7 @@ def get_zayavka_details(nomer):
                     'kolvo_zakaz': row[3] if len(row) > 3 else '',
                     'postavshchik': row[4] if len(row) > 4 else '',
                     'data_postavki_plan': row[5] if len(row) > 5 else '',
-                    'kolvo_fakt': row[6] if len_row > 6 else '',
+                    'kolvo_fakt': row[6] if len(row) > 6 else '',
                     'data_postavki_fakt': row[7] if len(row) > 7 else '',
                     'status': row[8] if len(row) > 8 else '',
                     'kachestvo': row[9] if len(row) > 9 else '',
@@ -175,8 +257,8 @@ def priemka():
                         'text': message,
                         'parse_mode': 'Markdown'
                     })
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Ошибка отправки уведомления: {e}")
             
             return jsonify({'success': True, 'message': 'Приемка сохранена'})
         else:
@@ -189,6 +271,14 @@ def priemka():
 def health():
     return jsonify({'status': 'ok', 'time': datetime.now().isoformat()})
 
+# ================== ЗАПУСК ==================
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    # Запускаем Telegram бота в отдельном потоке
+    bot_thread = threading.Thread(target=start_bot_thread, daemon=True)
+    bot_thread.start()
+    print("🚀 Бот запущен в отдельном потоке")
+    
+    # Запускаем Flask сервер
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
