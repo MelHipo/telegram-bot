@@ -119,8 +119,6 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def run_bot():
     """Запуск Telegram бота"""
     print("🔥 run_bot() вызвана!")
-    # Явно указываем asyncio для sniffio
-    os.environ["SNIFFIO_CURRENT_ASYNC_LIBRARY"] = "asyncio"
     sys.stdout.flush()
     
     token = TELEGRAM_BOT_TOKEN
@@ -136,9 +134,23 @@ async def run_bot():
         return
     
     try:
+        # Явно устанавливаем политику asyncio
+        import asyncio
+        asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
+        
         print("🔄 Создаем приложение бота...")
         sys.stdout.flush()
-        application = Application.builder().token(token).build()
+        
+        # Создаем приложение с явными настройками
+        application = (
+            Application.builder()
+            .token(token)
+            .connect_timeout(30)
+            .read_timeout(30)
+            .write_timeout(30)
+            .pool_timeout(30)
+            .build()
+        )
         
         print("➕ Добавляем обработчики команд...")
         sys.stdout.flush()
@@ -157,13 +169,17 @@ async def run_bot():
         sys.stdout.flush()
         await application.start()
         
-        print("📡 Запуск polling (прослушивание команд)...")
-        sys.stdout.flush()
-        await application.updater.start_polling()
-        print("✅ Polling запущен")
+        print("📡 Запуск polling...")
         sys.stdout.flush()
         
-        print("✅✅✅ Telegram бот УСПЕШНО запущен и слушает команды! ✅✅✅")
+        # Запускаем polling с явными параметрами
+        await application.updater.start_polling(
+            allowed_updates=['message', 'callback_query'],
+            drop_pending_updates=True,
+            timeout=30
+        )
+        
+        print("✅✅✅ Telegram бот УСПЕШНО запущен!")
         print("🤖 Бот готов к работе! Отправьте /start в Telegram")
         sys.stdout.flush()
         
@@ -381,4 +397,5 @@ if __name__ == '__main__':
     print(f"🚀 Запуск Flask сервера на порту {port}...")
     sys.stdout.flush()
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
