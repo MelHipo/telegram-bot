@@ -156,8 +156,10 @@ async def run_bot():
         await application.start()
         
         print("📡 Запуск polling (прослушивание команд)...")
-        sys.stdout.flush()
-        await application.updater.start_polling()
+sys.stdout.flush()
+await application.updater.start_polling()
+print("✅ Polling запущен")
+sys.stdout.flush()
         
         print("✅✅✅ Telegram бот УСПЕШНО запущен и слушает команды! ✅✅✅")
         print("🤖 Бот готов к работе! Отправьте /start в Telegram")
@@ -377,3 +379,4 @@ if __name__ == '__main__':
     print(f"🚀 Запуск Flask сервера на порту {port}...")
     sys.stdout.flush()
     app.run(host='0.0.0.0', port=port, debug=False)
+
