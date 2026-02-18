@@ -119,6 +119,8 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def run_bot():
     """Запуск Telegram бота"""
     print("🔥 run_bot() вызвана!")
+    # Явно указываем asyncio для sniffio
+    os.environ["SNIFFIO_CURRENT_ASYNC_LIBRARY"] = "asyncio"
     sys.stdout.flush()
     
     token = TELEGRAM_BOT_TOKEN
@@ -379,3 +381,4 @@ if __name__ == '__main__':
     print(f"🚀 Запуск Flask сервера на порту {port}...")
     sys.stdout.flush()
     app.run(host='0.0.0.0', port=port, debug=False)
+
