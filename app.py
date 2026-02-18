@@ -18,10 +18,6 @@ import time
 # Для работы asyncio в потоке
 nest_asyncio.apply()
 
-# Явно устанавливаем политику asyncio
-import asyncio
-asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-
 # ========== ОТЛАДКА: сразу пишем в логи ==========
 print("="*50)
 print("🚀🚀🚀 ПРИЛОЖЕНИЕ ЗАПУСКАЕТСЯ 🚀🚀🚀")
@@ -33,8 +29,10 @@ sys.stdout.flush()
 app = Flask(__name__)
 CORS(app)
 
-# ========== ФЛАГ ДЛЯ ЗАПУСКА БОТА ==========
+# ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
 bot_started = False
+bot_application = None
+bot_loop = None
 # ============================================
 
 # ================== НАСТРОЙКИ ==================
@@ -107,52 +105,74 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
     )
 
-async def run_bot_simple():
-    """Упрощённый запуск бота"""
-    print("🚀 Запускаем бота...")
+async def init_bot():
+    """Инициализация бота в главном цикле событий"""
+    global bot_application
+    
+    print("🚀 Инициализация бота в главном цикле...")
     
     if not TELEGRAM_BOT_TOKEN:
         print("❌ Токен не найден")
-        return
+        return None
     
     try:
         # Создаём приложение
-        app_bot = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         
         # Добавляем обработчики
-        app_bot.add_handler(CommandHandler("start", start_command))
-        app_bot.add_handler(CommandHandler("help", help_command))
-        app_bot.add_handler(CommandHandler("receiving", receiving_command))
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("receiving", receiving_command))
         
-        print("✅ Бот сконфигурирован, запускаем polling...")
+        print("✅ Бот сконфигурирован")
         
-        # Запускаем бота (это блокирующая операция)
-        await app_bot.run_polling(allowed_updates=['message'])
+        # Инициализируем
+        await application.initialize()
+        await application.start()
+        
+        # Запускаем polling
+        await application.updater.start_polling()
+        
+        print("✅✅✅ Бот успешно запущен и слушает команды!")
+        return application
         
     except Exception as e:
-        print(f"❌ Ошибка бота: {e}")
+        print(f"❌ Ошибка при запуске бота: {e}")
+        traceback.print_exc()
+        return None
 
-def start_bot_in_thread():
-    """Запуск бота в отдельном потоке"""
-    print("🔄 Запускаем бота в потоке...")
-    
-    # Создаём новый event loop для потока
-    loop = asyncio.new_event_loop()
+def run_bot_in_thread(loop):
+    """Запуск бота в указанном цикле событий"""
     asyncio.set_event_loop(loop)
-    
-    # Запускаем бота
-    loop.run_until_complete(run_bot_simple())
+    loop.run_forever()
 
-# ========== ЗАПУСКАЕМ БОТА ПРИ ПЕРВОМ ЗАПРОСЕ ==========
+# ========== ЗАПУСКАЕМ БОТА В ОТДЕЛЬНОМ ПОТОКЕ ==========
+def start_bot():
+    global bot_application, bot_loop
+    
+    # Создаём новый цикл событий для потока
+    bot_loop = asyncio.new_event_loop()
+    
+    # Запускаем бота в этом цикле
+    async def _start():
+        nonlocal bot_application
+        bot_application = await init_bot()
+    
+    # Выполняем инициализацию в цикле
+    bot_loop.run_until_complete(_start())
+    
+    # Запускаем цикл событий
+    bot_loop.run_forever()
+
 @app.before_request
 def start_bot_once():
     global bot_started
     if not bot_started and TELEGRAM_BOT_TOKEN:
-        print("🟢 Запускаем бота при первом запросе...")
-        bot_thread = threading.Thread(target=start_bot_in_thread, daemon=True)
+        print("🟢 Запускаем бота в отдельном потоке...")
+        bot_thread = threading.Thread(target=start_bot, daemon=True)
         bot_thread.start()
         bot_started = True
-        time.sleep(2)  # Даём боту время на инициализацию
+        time.sleep(3)  # Даём боту время на инициализацию
 # =======================================================
 
 # ================== API ЭНДПОИНТЫ ==================
