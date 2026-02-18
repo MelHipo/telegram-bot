@@ -13,6 +13,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 import nest_asyncio
 import sys
 import traceback
+import time
 
 # Для работы asyncio в потоке
 nest_asyncio.apply()
@@ -27,6 +28,10 @@ sys.stdout.flush()  # Принудительно отправляем в лог�
 
 app = Flask(__name__)
 CORS(app)
+
+# ========== ФЛАГ ДЛЯ ЗАПУСКА БОТА (НОВОЕ) ==========
+bot_started = False
+# ====================================================
 
 # ================== НАСТРОЙКИ ==================
 # ID вашей общей таблицы (из ссылки)
@@ -177,6 +182,19 @@ def start_bot_thread():
     print("✅ Event loop создан, запускаем run_bot()")
     sys.stdout.flush()
     loop.run_until_complete(run_bot())
+
+# ========== НОВОЕ: запускаем бота при первом запросе ==========
+@app.before_request
+def start_bot_once():
+    global bot_started
+    if not bot_started and TELEGRAM_BOT_TOKEN:
+        print("🟢 Запускаем бота при первом запросе...")
+        bot_thread = threading.Thread(target=start_bot_thread, daemon=True)
+        bot_thread.start()
+        bot_started = True
+        # Даем боту секунду на инициализацию
+        time.sleep(1)
+# ==============================================================
 
 # ================== API ЭНДПОИНТЫ ==================
 
@@ -352,17 +370,7 @@ if __name__ == '__main__':
     print("="*50)
     sys.stdout.flush()
     
-    # Запускаем Telegram бота в отдельном потоке
-    print("🚀 Создаем поток для Telegram бота...")
-    sys.stdout.flush()
-    bot_thread = threading.Thread(target=start_bot_thread, daemon=True)
-    bot_thread.start()
-    print("✅ Поток для бота запущен")
-    sys.stdout.flush()
-    
-    # Даем боту секунду на инициализацию
-    import time
-    time.sleep(1)
+    # Бот запустится при первом запросе через @app.before_request
     
     # Запускаем Flask сервер
     port = int(os.environ.get('PORT', 10000))
