@@ -106,10 +106,10 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def init_bot():
-    """Инициализация бота в главном цикле событий"""
+    """Инициализация бота"""
     global bot_application
     
-    print("🚀 Инициализация бота в главном цикле...")
+    print("🚀 Инициализация бота...")
     
     if not TELEGRAM_BOT_TOKEN:
         print("❌ Токен не найден")
@@ -141,21 +141,17 @@ async def init_bot():
         traceback.print_exc()
         return None
 
-def run_bot_in_thread(loop):
-    """Запуск бота в указанном цикле событий"""
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
-
-# ========== ЗАПУСКАЕМ БОТА В ОТДЕЛЬНОМ ПОТОКЕ ==========
 def start_bot():
+    """Запуск бота в отдельном потоке"""
     global bot_application, bot_loop
     
     # Создаём новый цикл событий для потока
     bot_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(bot_loop)
     
     # Запускаем бота в этом цикле
     async def _start():
-        nonlocal bot_application
+        global bot_application
         bot_application = await init_bot()
     
     # Выполняем инициализацию в цикле
@@ -176,14 +172,173 @@ def start_bot_once():
 # =======================================================
 
 # ================== API ЭНДПОИНТЫ ==================
-# (все ваши существующие эндпоинты остаются без изменений)
-# @app.route('/api/objects', ...)
-# @app.route('/api/zayavki', ...)
-# @app.route('/api/zayavka/<nomer>', ...)
-# @app.route('/api/priemka', ...)
-# @app.route('/api/health', ...)
+
+@app.route('/api/objects', methods=['GET'])
+def get_objects():
+    """Получить список объектов"""
+    print("📡 GET /api/objects")
+    try:
+        client = get_sheets_client()
+        sheet = client.open_by_key(SPREADSHEET_ID_COMPANY).worksheet(SHEET_OBJECTS)
+        data = sheet.get_all_values()[1:]  # пропускаем заголовки
+        
+        objects = []
+        for row in data:
+            if row and row[0].strip():
+                objects.append({
+                    'code': row[0].strip(),
+                    'name': row[1].strip() if len(row) > 1 else ''
+                })
+        
+        print(f"✅ Найдено объектов: {len(objects)}")
+        return jsonify({'success': True, 'objects': objects})
+    except Exception as e:
+        print(f"❌ Ошибка в /api/objects: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/zayavki', methods=['GET'])
+def get_zayavki():
+    """Получить активные заявки для объекта"""
+    object_code = request.args.get('object')
+    print(f"📡 GET /api/zayavki?object={object_code}")
+    
+    if not object_code:
+        return jsonify({'success': False, 'error': 'Не указан объект'}), 400
+    
+    try:
+        client = get_sheets_client()
+        sheet = client.open_by_key(SPREADSHEET_ID_MAIN).worksheet(SHEET_REESTR_ZAYAVOK)
+        data = sheet.get_all_values()[1:]
+        
+        zayavki = []
+        for row in data:
+            if len(row) >= 4:
+                nomer = row[1] if len(row) > 1 else ''
+                status = row[3] if len(row) > 3 else ''
+                
+                if object_code in nomer and status in ['В обработке', 'Частичная доставка', 'Полная доставка']:
+                    zayavki.append({
+                        'date': row[0] if len(row) > 0 else '',
+                        'nomer': nomer,
+                        'responsible': row[2] if len(row) > 2 else '',
+                        'status': status
+                    })
+        
+        print(f"✅ Найдено заявок: {len(zayavki)}")
+        return jsonify({'success': True, 'zayavki': zayavki})
+    except Exception as e:
+        print(f"❌ Ошибка в /api/zayavki: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/zayavka/<nomer>', methods=['GET'])
+def get_zayavka_details(nomer):
+    """Получить позиции заявки"""
+    print(f"📡 GET /api/zayavka/{nomer}")
+    try:
+        client = get_sheets_client()
+        sheet = client.open_by_key(SPREADSHEET_ID_MAIN).worksheet(SHEET_PERECHEN_MATERIALOV)
+        data = sheet.get_all_values()[1:]
+        
+        pozicii = []
+        for row in data:
+            if len(row) >= 11 and row[0] == nomer:
+                pozicii.append({
+                    'nomer_zayavki': row[0],
+                    'naim': row[1] if len(row) > 1 else '',
+                    'ed_izm': row[2] if len(row) > 2 else '',
+                    'kolvo_zakaz': row[3] if len(row) > 3 else '',
+                    'postavshchik': row[4] if len(row) > 4 else '',
+                    'data_postavki_plan': row[5] if len(row) > 5 else '',
+                    'kolvo_fakt': row[6] if len(row) > 6 else '',
+                    'data_postavki_fakt': row[7] if len(row) > 7 else '',
+                    'status': row[8] if len(row) > 8 else '',
+                    'kachestvo': row[9] if len(row) > 9 else '',
+                    'kommentariy': row[10] if len(row) > 10 else ''
+                })
+        
+        print(f"✅ Найдено позиций: {len(pozicii)}")
+        return jsonify({'success': True, 'pozicii': pozicii})
+    except Exception as e:
+        print(f"❌ Ошибка в /api/zayavka/{nomer}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/priemka', methods=['POST'])
+def priemka():
+    """Принять материал"""
+    data = request.json
+    print(f"📡 POST /api/priemka: {data.get('nomer_zayavki')} - {data.get('naim_materiala')}")
+    
+    required = ['nomer_zayavki', 'naim_materiala', 'kolvo_fakt', 'kachestvo', 'fio']
+    for field in required:
+        if field not in data:
+            return jsonify({'success': False, 'error': f'Нет поля {field}'}), 400
+    
+    try:
+        client = get_sheets_client()
+        sheet = client.open_by_key(SPREADSHEET_ID_MAIN).worksheet(SHEET_PERECHEN_MATERIALOV)
+        
+        all_data = sheet.get_all_values()
+        today = datetime.now().strftime('%d.%m.%Y')
+        
+        updated = False
+        for i, row in enumerate(all_data):
+            if i == 0:
+                continue
+            if len(row) >= 2 and row[0] == data['nomer_zayavki'] and row[1] == data['naim_materiala']:
+                row_num = i + 1
+                sheet.update(f'G{row_num}', data['kolvo_fakt'])
+                sheet.update(f'H{row_num}', today)
+                sheet.update(f'I{row_num}', 'Принят' if data['kachestvo'] == 'OK' else 'Брак')
+                sheet.update(f'J{row_num}', data['kachestvo'])
+                
+                komment = f"Принял: {data['fio']}. {data.get('kommentariy', '')}"
+                sheet.update(f'K{row_num}', komment)
+                updated = True
+                print(f"✅ Позиция обновлена (строка {row_num})")
+                break
+        
+        if updated:
+            # Если брак - уведомление
+            if data['kachestvo'] == 'Брак':
+                print("⚠️ Обнаружен брак, отправляем уведомление")
+                message = f"""
+⚠️ **БРАК НА ОБЪЕКТЕ**
+
+📦 Заявка: {data['nomer_zayavki']}
+🧱 Материал: {data['naim_materiala']}
+📝 Комментарий: {data.get('kommentariy', '')}
+👤 Принял: {data['fio']}
+"""
+                url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                try:
+                    response = requests.post(url, json={
+                        'chat_id': CHAT_ID_WORK,
+                        'text': message,
+                        'parse_mode': 'Markdown'
+                    })
+                    if response.status_code == 200:
+                        print("✅ Уведомление о браке отправлено")
+                    else:
+                        print(f"❌ Ошибка отправки уведомления: {response.status_code}")
+                except Exception as e:
+                    print(f"❌ Ошибка отправки уведомления: {e}")
+            
+            return jsonify({'success': True, 'message': 'Приемка сохранена'})
+        else:
+            print(f"❌ Позиция не найдена: {data['nomer_zayavki']} - {data['naim_materiala']}")
+            return jsonify({'success': False, 'error': 'Позиция не найдена'}), 404
+            
+    except Exception as e:
+        print(f"❌ Ошибка в /api/priemka: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    print("📡 GET /api/health")
+    return jsonify({'status': 'ok', 'time': datetime.now().isoformat()})
 
 # ================== ЗАПУСК ==================
+
 if __name__ == '__main__':
     print("="*50)
     print("🟢 ЗАПУСК MAIN БЛОКА")
