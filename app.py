@@ -6,34 +6,18 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import requests
 from datetime import datetime
-import threading
-import asyncio
-from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, ContextTypes
-import nest_asyncio
 import sys
-import traceback
-import time
 
-# Для работы asyncio в потоке
-nest_asyncio.apply()
-
-# ========== ОТЛАДКА: сразу пишем в логи ==========
+# ========== ОТЛАДКА ==========
 print("="*50)
-print("🚀🚀🚀 ПРИЛОЖЕНИЕ ЗАПУСКАЕТСЯ 🚀🚀🚀")
+print("🚀🚀🚀 API СЕРВЕР ЗАПУСКАЕТСЯ 🚀🚀🚀")
 print(f"Python версия: {sys.version}")
 print("="*50)
 sys.stdout.flush()
-# =================================================
+# ==============================
 
 app = Flask(__name__)
 CORS(app)
-
-# ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
-bot_started = False
-bot_application = None
-bot_loop = None
-# ============================================
 
 # ================== НАСТРОЙКИ ==================
 SPREADSHEET_ID_MAIN = '1AyoHQmx4GCMYrOx3Px22b4VscLcw02iatWAiYosu8gY'
@@ -68,108 +52,6 @@ def get_sheets_client():
     
     client = gspread.authorize(creds)
     return client
-
-# ================== КОМАНДЫ ДЛЯ TELEGRAM БОТА ==================
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    print(f"📨 Команда /start от пользователя {user.id}")
-    await update.message.reply_text(
-        "👋 Привет! Я бот для приёмки материалов.\n\n"
-        "Команды:\n"
-        "/start - Приветствие\n"
-        "/receiving - Открыть приёмку материалов\n"
-        "/help - Справка"
-    )
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    print(f"📨 Команда /help от пользователя {user.id}")
-    await update.message.reply_text(
-        "📋 **Справка по командам**\n\n"
-        "/start - Начать работу с ботом\n"
-        "/receiving - Открыть приложение для приёмки материалов\n"
-        "/help - Показать эту справку"
-    )
-
-async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    print(f"📨 Команда /receiving от пользователя {user.id}")
-    await update.message.reply_text(
-        "📱 Откройте приложение для приёмки материалов:",
-        reply_markup={
-            "inline_keyboard": [[{
-                "text": "🚀 Открыть приёмку",
-                "web_app": {"url": "https://melhipo.github.io/mini-app/"}
-            }]]
-        }
-    )
-
-async def init_bot():
-    """Инициализация бота"""
-    global bot_application
-    
-    print("🚀 Инициализация бота...")
-    
-    if not TELEGRAM_BOT_TOKEN:
-        print("❌ Токен не найден")
-        return None
-    
-    try:
-        # Создаём приложение
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-        
-        # Добавляем обработчики
-        application.add_handler(CommandHandler("start", start_command))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("receiving", receiving_command))
-        
-        print("✅ Бот сконфигурирован")
-        
-        # Инициализируем
-        await application.initialize()
-        await application.start()
-        
-        # Запускаем polling
-        await application.updater.start_polling()
-        
-        print("✅✅✅ Бот успешно запущен и слушает команды!")
-        return application
-        
-    except Exception as e:
-        print(f"❌ Ошибка при запуске бота: {e}")
-        traceback.print_exc()
-        return None
-
-def start_bot():
-    """Запуск бота в отдельном потоке"""
-    global bot_application, bot_loop
-    
-    # Создаём новый цикл событий для потока
-    bot_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(bot_loop)
-    
-    # Запускаем бота в этом цикле
-    async def _start():
-        global bot_application
-        bot_application = await init_bot()
-    
-    # Выполняем инициализацию в цикле
-    bot_loop.run_until_complete(_start())
-    
-    # Запускаем цикл событий
-    bot_loop.run_forever()
-
-@app.before_request
-def start_bot_once():
-    global bot_started
-    if not bot_started and TELEGRAM_BOT_TOKEN:
-        print("🟢 Запускаем бота в отдельном потоке...")
-        bot_thread = threading.Thread(target=start_bot, daemon=True)
-        bot_thread.start()
-        bot_started = True
-        time.sleep(3)  # Даём боту время на инициализацию
-# =======================================================
 
 # ================== API ЭНДПОИНТЫ ==================
 
@@ -341,7 +223,7 @@ def health():
 
 if __name__ == '__main__':
     print("="*50)
-    print("🟢 ЗАПУСК MAIN БЛОКА")
+    print("🟢 ЗАПУСК API СЕРВЕРА")
     print("="*50)
     sys.stdout.flush()
     
