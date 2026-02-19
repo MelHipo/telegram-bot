@@ -4,7 +4,6 @@
 import os
 import asyncio
 import sys
-import signal
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
@@ -60,47 +59,66 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 # --- Конец команд ---
 
-async def post_init(application: Application):
-    """Действия после инициализации бота"""
-    print("✅ Bot initialized and ready to work!")
-    sys.stdout.flush()
-
-async def shutdown(application: Application):
-    """Действия при остановке бота"""
-    print("🛑 Bot shutting down...")
-    sys.stdout.flush()
-
-def main():
-    """Главная функция запуска бота"""
+async def main():
+    """Асинхронная главная функция"""
     print("🔄 Building application...")
+    sys.stdout.flush()
     
     # Создаём приложение
-    application = (
-        Application.builder()
-        .token(TOKEN)
-        .post_init(post_init)
-        .build()
-    )
+    application = Application.builder().token(TOKEN).build()
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("receiving", receiving_command))
     
-    print("✅ Handlers added. Starting polling...")
+    print("✅ Handlers added. Initializing...")
     sys.stdout.flush()
     
-    # Запускаем бота (это блокирующий вызов)
+    # Инициализируем
+    await application.initialize()
+    
+    print("✅ Bot initialized. Starting...")
+    sys.stdout.flush()
+    
+    # Запускаем
+    await application.start()
+    
+    print("✅ Bot started. Starting polling...")
+    sys.stdout.flush()
+    
+    # Запускаем polling
+    await application.updater.start_polling()
+    
+    print("✅✅✅ BOT IS RUNNING! ✅✅✅")
+    print("🤖 Bot is ready! Send /start in Telegram")
+    sys.stdout.flush()
+    
+    # Держим бота запущенным
     try:
-        # Используем run_polling, который сам управляет циклом
-        application.run_polling(allowed_updates=['message'])
+        while True:
+            await asyncio.sleep(1)
     except KeyboardInterrupt:
-        print("\n🛑 Bot stopped by user")
-    except Exception as e:
-        print(f"❌ Bot crashed with error: {e}")
-        raise
+        print("\n🛑 Stopping bot...")
     finally:
+        # Останавливаем
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
         print("👋 Bot shutdown complete")
 
 if __name__ == '__main__':
-    main()
+    # Создаём и устанавливаем цикл событий
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        # Запускаем асинхронную функцию
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        print("\n🛑 Bot stopped by user")
+    except Exception as e:
+        print(f"❌ Bot crashed: {e}")
+    finally:
+        # Закрываем цикл
+        loop.close()
