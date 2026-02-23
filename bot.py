@@ -4,118 +4,32 @@
 import os
 import asyncio
 import sys
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-
-print("🚀🚀🚀 TELEGRAM BOT STARTING (STANDALONE) 🚀🚀🚀")
-sys.stdout.flush()
-
-# Получаем токен
-TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-if not TOKEN:
-    print("❌ FATAL: TELEGRAM_BOT_TOKEN environment variable not set!")
-    sys.exit(1)
-
-print(f"✅ Bot token found (first 10 chars): {TOKEN[:10]}...")
-sys.stdout.flush()
-
-# --- Команды бота ---
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start"""
-    user = update.effective_user
-    print(f"📨 /start from user {user.id} ({user.first_name})")
-    await update.message.reply_text(
-        "👋 Привет! Я бот для приёмки материалов.\n\n"
-        "Команды:\n"
-        "/start - Приветствие\n"
-        "/receiving - Открыть приёмку материалов\n"
-        "/help - Справка"
-    )
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /help"""
-    user = update.effective_user
-    print(f"📨 /help from user {user.id}")
-    await update.message.reply_text(
-        "📋 **Справка по командам**\n\n"
-        "/start - Начать работу\n"
-        "/receiving - Открыть приёмку\n"
-        "/help - Справка\n\n"
-        "Для приёмки материалов используйте кнопку меню или команду /receiving"
-    )
-
-async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /receiving - открывает Mini App"""
-    user = update.effective_user
-    print(f"📨 /receiving from user {user.id}")
-    await update.message.reply_text(
-        "📱 Откройте приложение для приёмки материалов:",
-        reply_markup={
-            "inline_keyboard": [[{
-                "text": "🚀 Открыть приёмку",
-                "web_app": {"url": "https://melhipo.github.io/mini-app/"}
-            }]]
-        }
-    )
-# --- Конец команд ---
-
-async def main():
-    """Асинхронная главная функция"""
-    print("🔄 Building application...")
-    sys.stdout.flush()
-    
-    # Создаём приложение
-    application = Application.builder().token(TOKEN).build()
-    
-    # Добавляем обработчики
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("receiving", receiving_command))
-    
-    print("✅ Handlers added. Initializing...")
-    sys.stdout.flush()
-    
-    # Инициализируем
-    await application.initialize()
-    
-    print("✅ Bot initialized. Starting...")
-    sys.stdout.flush()
-    
-    # Запускаем
-    await application.start()
-    
-    print("✅ Bot started. Starting polling...")
-    sys.stdout.flush()
-    
-    # Запускаем polling
-    await application.updater.start_polling()
-    
-    print("✅✅✅ BOT IS RUNNING! ✅✅✅")
-    print("🤖 Bot is ready! Send /start in Telegram")
-    sys.stdout.flush()
-    
-    # Держим бота запущенным
-    try:
-        while True:
-            await asyncio.sleep(1)
-    except KeyboardInterrupt:
-        print("\n🛑 Stopping bot...")
-    finally:
-        # Останавливаем
-        await application.updater.stop()
-        await application.stop()
-        await application.shutdown()
-        print("👋 Bot shutdown complete")
 import aiohttp
 import io
 from datetime import datetime
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-# Словарь для хранения последних данных заявок (чтобы не запрашивать каждый раз)
-act_data_cache = {}
+print("🚀🚀🚀 TELEGRAM BOT STARTING (STANDALONE) 🚀🚀🚀")
+sys.stdout.flush()
+
+# Получаем токен и ID чата
+TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+CHAT_ID_WORK = os.environ.get('CHAT_ID_WORK', '-1003893391515')
+
+if not TOKEN:
+    print("❌ FATAL: TELEGRAM_BOT_TOKEN environment variable not set!")
+    sys.exit(1)
+
+print(f"✅ Bot token found (first 10 chars): {TOKEN[:10]}...")
+print(f"✅ CHAT_ID_WORK: {CHAT_ID_WORK}")
+sys.stdout.flush()
+
+# ================== ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ PDF ==================
 
 def generate_act_pdf(zayavka_data, materials_data, fio):
     """Генерирует PDF акта приёма-передачи"""
@@ -182,16 +96,8 @@ def generate_act_pdf(zayavka_data, materials_data, fio):
     buffer.seek(0)
     return buffer
 
-# Обработчик для генерации акта (будет вызываться API)
-async def generate_act(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Генерирует акт по переданным данным"""
-    # Эта функция будет вызываться не из Telegram, а из API
-    # Поэтому здесь другой подход
-    pass
-
-# Функция для вызова из API (добавим позже)
 async def generate_act_from_api(nomer_zayavki, fio):
-    """Вызывается API для генерации акта"""
+    """Вызывается для генерации акта по номеру заявки"""
     try:
         # Получаем данные о заявке и материалах через API Render
         async with aiohttp.ClientSession() as session:
@@ -240,25 +146,118 @@ async def generate_act_from_api(nomer_zayavki, fio):
         print(f"Ошибка генерации акта: {e}")
         return None, str(e)
 
-# Добавим команду для тестирования (потом удалим)
+# ================== КОМАНДЫ БОТА ==================
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /start"""
+    user = update.effective_user
+    print(f"📨 /start from user {user.id} ({user.first_name})")
+    await update.message.reply_text(
+        "👋 Привет! Я бот для приёмки материалов.\n\n"
+        "Команды:\n"
+        "/start - Приветствие\n"
+        "/receiving - Открыть приёмку материалов\n"
+        "/testact - Тест генерации акта\n"
+        "/help - Справка"
+    )
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /help"""
+    user = update.effective_user
+    print(f"📨 /help from user {user.id}")
+    await update.message.reply_text(
+        "📋 **Справка по командам**\n\n"
+        "/start - Начать работу\n"
+        "/receiving - Открыть приёмку\n"
+        "/testact [номер заявки] - Сгенерировать тестовый акт\n"
+        "/help - Справка\n\n"
+        "Для приёмки материалов используйте кнопку меню или команду /receiving"
+    )
+
+async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /receiving - открывает Mini App"""
+    user = update.effective_user
+    print(f"📨 /receiving from user {user.id}")
+    await update.message.reply_text(
+        "📱 Откройте приложение для приёмки материалов:",
+        reply_markup={
+            "inline_keyboard": [[{
+                "text": "🚀 Открыть приёмку",
+                "web_app": {"url": "https://melhipo.github.io/mini-app/"}
+            }]]
+        }
+    )
+
 async def test_act_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Тестовая команда для генерации акта"""
     if not context.args:
-        await update.message.reply_text("Укажите номер заявки, например: /testact Библ. № 001")
+        await update.message.reply_text(
+            "❌ Укажите номер заявки, например:\n"
+            "/testact Библ. № 001"
+        )
         return
     
     nomer = ' '.join(context.args)
-    await update.message.reply_text(f"Генерирую акт для заявки {nomer}...")
+    await update.message.reply_text(f"🔄 Генерирую акт для заявки {nomer}...")
     
-    pdf, message = await generate_act_from_api(nomer, "Тестовый пользователь")
+    pdf, message = await generate_act_from_api(nomer, update.effective_user.full_name or "Тестовый пользователь")
     
     if pdf:
         await update.message.reply_text(f"✅ {message}")
     else:
         await update.message.reply_text(f"❌ Ошибка: {message}")
 
-# Добавляем обработчик команды (временно, для теста)
-application.add_handler(CommandHandler("testact", test_act_command))
+# ================== ЗАПУСК БОТА ==================
+
+async def main():
+    """Асинхронная главная функция"""
+    print("🔄 Building application...")
+    sys.stdout.flush()
+    
+    # Создаём приложение
+    application = Application.builder().token(TOKEN).build()
+    
+    # Добавляем все обработчики команд
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("receiving", receiving_command))
+    application.add_handler(CommandHandler("testact", test_act_command))
+    
+    print("✅ Handlers added. Initializing...")
+    sys.stdout.flush()
+    
+    # Инициализируем
+    await application.initialize()
+    
+    print("✅ Bot initialized. Starting...")
+    sys.stdout.flush()
+    
+    # Запускаем
+    await application.start()
+    
+    print("✅ Bot started. Starting polling...")
+    sys.stdout.flush()
+    
+    # Запускаем polling
+    await application.updater.start_polling()
+    
+    print("✅✅✅ BOT IS RUNNING! ✅✅✅")
+    print("🤖 Bot is ready! Send /start in Telegram")
+    sys.stdout.flush()
+    
+    # Держим бота запущенным
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        print("\n🛑 Stopping bot...")
+    finally:
+        # Останавливаем
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+        print("👋 Bot shutdown complete")
+
 if __name__ == '__main__':
     # Создаём и устанавливаем цикл событий
     loop = asyncio.new_event_loop()
