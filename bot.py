@@ -6,6 +6,7 @@ import asyncio
 import sys
 import aiohttp
 import io
+import traceback
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -33,92 +34,109 @@ sys.stdout.flush()
 
 def generate_act_pdf(zayavka_data, materials_data, fio):
     """Генерирует PDF акта приёма-передачи"""
+    print("📄 Начинаю генерацию PDF...")
     buffer = io.BytesIO()
     
-    # Создаем документ
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    elements = []
-    styles = getSampleStyleSheet()
-    
-    # Заголовок
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        alignment=1,
-        spaceAfter=20
-    )
-    elements.append(Paragraph("АКТ ПРИЁМА-ПЕРЕДАЧИ МАТЕРИАЛОВ", title_style))
-    
-    # Информация о заявке
-    info_style = styles['Normal']
-    elements.append(Paragraph(f"Номер заявки: {zayavka_data['nomer']}", info_style))
-    elements.append(Paragraph(f"Дата приёмки: {datetime.now().strftime('%d.%m.%Y')}", info_style))
-    elements.append(Paragraph(f"Принял: {fio}", info_style))
-    elements.append(Spacer(1, 20))
-    
-    # Таблица с материалами
-    table_data = [['№', 'Наименование', 'Ед. изм.', 'Заказано', 'Принято', 'Качество']]
-    
-    for i, item in enumerate(materials_data, 1):
-        table_data.append([
-            str(i),
-            item['naim'],
-            item['ed_izm'],
-            str(item['kolvo_zakaz']),
-            str(item['kolvo_fakt']),
-            '✓' if item['kachestvo'] == 'OK' else '✗ Брак'
-        ])
-    
-    table = Table(table_data, colWidths=[40, 180, 50, 60, 60, 70])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
-    elements.append(table)
-    elements.append(Spacer(1, 30))
-    
-    # Подписи
-    elements.append(Paragraph("Сдал: ___________________ (поставщик)", styles['Normal']))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph("Принял: ___________________", styles['Normal']))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph(f"({fio})", styles['Normal']))
-    
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
+    try:
+        # Создаем документ
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Заголовок
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            alignment=1,
+            spaceAfter=20
+        )
+        elements.append(Paragraph("АКТ ПРИЁМА-ПЕРЕДАЧИ МАТЕРИАЛОВ", title_style))
+        
+        # Информация о заявке
+        info_style = styles['Normal']
+        elements.append(Paragraph(f"Номер заявки: {zayavka_data['nomer']}", info_style))
+        elements.append(Paragraph(f"Дата приёмки: {datetime.now().strftime('%d.%m.%Y')}", info_style))
+        elements.append(Paragraph(f"Принял: {fio}", info_style))
+        elements.append(Spacer(1, 20))
+        
+        # Таблица с материалами
+        table_data = [['№', 'Наименование', 'Ед. изм.', 'Заказано', 'Принято', 'Качество']]
+        
+        for i, item in enumerate(materials_data, 1):
+            table_data.append([
+                str(i),
+                item['naim'],
+                item['ed_izm'],
+                str(item['kolvo_zakaz']),
+                str(item['kolvo_fakt']),
+                '✓' if item['kachestvo'] == 'OK' else '✗ Брак'
+            ])
+        
+        table = Table(table_data, colWidths=[40, 180, 50, 60, 60, 70])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        elements.append(table)
+        elements.append(Spacer(1, 30))
+        
+        # Подписи
+        elements.append(Paragraph("Сдал: ___________________ (поставщик)", styles['Normal']))
+        elements.append(Spacer(1, 10))
+        elements.append(Paragraph("Принял: ___________________", styles['Normal']))
+        elements.append(Spacer(1, 10))
+        elements.append(Paragraph(f"({fio})", styles['Normal']))
+        
+        doc.build(elements)
+        buffer.seek(0)
+        print("✅ PDF сгенерирован успешно")
+        return buffer
+    except Exception as e:
+        print(f"❌ Ошибка генерации PDF: {e}")
+        traceback.print_exc()
+        raise
 
 async def generate_act_from_api(nomer_zayavki, fio):
     """Вызывается для генерации акта по номеру заявки"""
+    print(f"🔍 generate_act_from_api вызвана с номером: {nomer_zayavki}, пользователь: {fio}")
+    sys.stdout.flush()
+    
     try:
         # Получаем данные о заявке и материалах через API Render
+        print(f"🌐 Запрашиваю данные с API: https://telegram-bot-pjn4.onrender.com/api/zayavka/{nomer_zayavki}")
         async with aiohttp.ClientSession() as session:
             # Получаем информацию о заявке
             url_zayavka = f"https://telegram-bot-pjn4.onrender.com/api/zayavka/{nomer_zayavki}"
             async with session.get(url_zayavka) as resp:
+                print(f"📡 Статус ответа API: {resp.status}")
                 if resp.status != 200:
-                    return None, "Не удалось получить данные заявки"
+                    return None, f"Не удалось получить данные заявки (статус: {resp.status})"
                 data = await resp.json()
+                print(f"📦 Данные от API: {data}")
                 
             if not data.get('success'):
-                return None, "Ошибка получения данных"
+                return None, f"Ошибка получения данных: {data.get('error', 'неизвестная ошибка')}"
             
             materials = data.get('pozicii', [])
+            print(f"📦 Получено материалов: {len(materials)}")
+            
             # Фильтруем только принятые материалы
             accepted_materials = [m for m in materials if m['status'] in ['Принят', 'Брак']]
+            print(f"✅ Принятых материалов: {len(accepted_materials)}")
             
             if not accepted_materials:
                 return None, "Нет принятых материалов"
             
             # Генерируем PDF
+            print("📄 Начинаю генерацию PDF...")
             pdf_buffer = generate_act_pdf(
                 {'nomer': nomer_zayavki},
                 accepted_materials,
@@ -126,6 +144,7 @@ async def generate_act_from_api(nomer_zayavki, fio):
             )
             
             # Отправляем в Telegram
+            print("📤 Отправляю PDF в Telegram...")
             url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
             
             # В главный чат
@@ -137,13 +156,17 @@ async def generate_act_from_api(nomer_zayavki, fio):
                               content_type='application/pdf')
             
             async with session.post(url, data=form_data) as resp:
+                print(f"📡 Статус отправки в Telegram: {resp.status}")
                 if resp.status == 200:
                     return pdf_buffer, "Акт отправлен"
                 else:
-                    return None, "Ошибка отправки в Telegram"
+                    response_text = await resp.text()
+                    print(f"❌ Ошибка Telegram: {response_text}")
+                    return None, f"Ошибка отправки в Telegram (статус: {resp.status})"
                     
     except Exception as e:
-        print(f"Ошибка генерации акта: {e}")
+        print(f"❌ Ошибка генерации акта: {e}")
+        traceback.print_exc()
         return None, str(e)
 
 # ================== КОМАНДЫ БОТА ==================
@@ -190,6 +213,10 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def test_act_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Тестовая команда для генерации акта"""
+    user = update.effective_user
+    print(f"📨 /testact from user {user.id}")
+    print(f"📨 Аргументы: {context.args}")
+    
     if not context.args:
         await update.message.reply_text(
             "❌ Укажите номер заявки, например:\n"
@@ -198,6 +225,8 @@ async def test_act_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     nomer = ' '.join(context.args)
+    print(f"📨 Номер заявки: {nomer}")
+    
     await update.message.reply_text(f"🔄 Генерирую акт для заявки {nomer}...")
     
     pdf, message = await generate_act_from_api(nomer, update.effective_user.full_name or "Тестовый пользователь")
@@ -270,6 +299,7 @@ if __name__ == '__main__':
         print("\n🛑 Bot stopped by user")
     except Exception as e:
         print(f"❌ Bot crashed: {e}")
+        traceback.print_exc()
     finally:
         # Закрываем цикл
         loop.close()
