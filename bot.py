@@ -4,7 +4,7 @@
 import os
 import asyncio
 import sys
-import aiohttp
+import requests
 import io
 import traceback
 from datetime import datetime
@@ -132,22 +132,34 @@ async def generate_act_from_api(nomer_zayavki, fio):
                 fio
             )
             
-            # Отправляем в Telegram
+            # Небольшая задержка перед отправкой
+            await asyncio.sleep(1)
+            
+            # Отправляем в Telegram через requests (синхронно)
             url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
+            files = {
+                'document': (
+                    f"act_{nomer_zayavki.replace(' ', '_')}.pdf",
+                    pdf_buffer.getvalue(),
+                    'application/pdf'
+                )
+            }
+            data = {
+                'chat_id': CHAT_ID_WORK,
+                'caption': f"📄 Акт приёма-передачи по заявке {nomer_zayavki}"
+            }
             
-            # В главный чат
-            form_data = aiohttp.FormData()
-            form_data.add_field('chat_id', CHAT_ID_WORK)
-            form_data.add_field('caption', f"📄 Акт приёма-передачи по заявке {nomer_zayavki}")
-            form_data.add_field('document', pdf_buffer.getvalue(), 
-                              filename=f"act_{nomer_zayavki.replace(' ', '_')}.pdf",
-                              content_type='application/pdf')
+            # Выполняем запрос в отдельном потоке, чтобы не блокировать асинхронность
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None, 
+                lambda: requests.post(url, data=data, files=files, timeout=30)
+            )
             
-            async with session.post(url, data=form_data) as resp:
-                if resp.status == 200:
-                    return pdf_buffer, "Акт отправлен"
-                else:
-                    return None, f"Ошибка отправки в Telegram (статус: {resp.status})"
+            if response.status_code == 200:
+                return pdf_buffer, "Акт отправлен"
+            else:
+                return None, f"Ошибка отправки в Telegram (статус: {response.status_code})"
                     
     except Exception as e:
         print(f"❌ Ошибка генерации акта: {e}")
