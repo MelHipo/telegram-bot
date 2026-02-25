@@ -34,7 +34,6 @@ sys.stdout.flush()
 
 def generate_act_pdf(zayavka_data, materials_data, fio):
     """Генерирует PDF акта приёма-передачи"""
-    print("📄 Начинаю генерацию PDF...")
     buffer = io.BytesIO()
     
     try:
@@ -97,7 +96,6 @@ def generate_act_pdf(zayavka_data, materials_data, fio):
         
         doc.build(elements)
         buffer.seek(0)
-        print("✅ PDF сгенерирован успешно")
         return buffer
     except Exception as e:
         print(f"❌ Ошибка генерации PDF: {e}")
@@ -106,37 +104,28 @@ def generate_act_pdf(zayavka_data, materials_data, fio):
 
 async def generate_act_from_api(nomer_zayavki, fio):
     """Вызывается для генерации акта по номеру заявки"""
-    print(f"🔍 generate_act_from_api вызвана с номером: {nomer_zayavki}, пользователь: {fio}")
-    sys.stdout.flush()
-    
     try:
         # Получаем данные о заявке и материалах через API Render
-        print(f"🌐 Запрашиваю данные с API: https://telegram-bot-pjn4.onrender.com/api/zayavka/{nomer_zayavki}")
         async with aiohttp.ClientSession() as session:
             # Получаем информацию о заявке
             url_zayavka = f"https://telegram-bot-pjn4.onrender.com/api/zayavka/{nomer_zayavki}"
             async with session.get(url_zayavka) as resp:
-                print(f"📡 Статус ответа API: {resp.status}")
                 if resp.status != 200:
                     return None, f"Не удалось получить данные заявки (статус: {resp.status})"
                 data = await resp.json()
-                print(f"📦 Данные от API: {data}")
                 
             if not data.get('success'):
                 return None, f"Ошибка получения данных: {data.get('error', 'неизвестная ошибка')}"
             
             materials = data.get('pozicii', [])
-            print(f"📦 Получено материалов: {len(materials)}")
             
             # Фильтруем только принятые материалы
             accepted_materials = [m for m in materials if m['status'] in ['Принят', 'Брак']]
-            print(f"✅ Принятых материалов: {len(accepted_materials)}")
             
             if not accepted_materials:
                 return None, "Нет принятых материалов"
             
             # Генерируем PDF
-            print("📄 Начинаю генерацию PDF...")
             pdf_buffer = generate_act_pdf(
                 {'nomer': nomer_zayavki},
                 accepted_materials,
@@ -144,7 +133,6 @@ async def generate_act_from_api(nomer_zayavki, fio):
             )
             
             # Отправляем в Telegram
-            print("📤 Отправляю PDF в Telegram...")
             url = f"https://api.telegram.org/bot{TOKEN}/sendDocument"
             
             # В главный чат
@@ -156,12 +144,9 @@ async def generate_act_from_api(nomer_zayavki, fio):
                               content_type='application/pdf')
             
             async with session.post(url, data=form_data) as resp:
-                print(f"📡 Статус отправки в Telegram: {resp.status}")
                 if resp.status == 200:
                     return pdf_buffer, "Акт отправлен"
                 else:
-                    response_text = await resp.text()
-                    print(f"❌ Ошибка Telegram: {response_text}")
                     return None, f"Ошибка отправки в Telegram (статус: {resp.status})"
                     
     except Exception as e:
@@ -213,8 +198,7 @@ async def receiving_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def test_act_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Тестовая команда для генерации акта"""
-    user = update.effective_user
-    print(f"📨 /testact from user {user.id}")
+    print(f"📨 /testact from user {update.effective_user.id}")
     print(f"📨 Аргументы: {context.args}")
     
     if not context.args:
